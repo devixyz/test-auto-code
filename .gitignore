@@ -1,0 +1,12 @@
+/config/app.env
+/openai-config.json
+/ArchGo
+
+.idea
+/docker-data
+.vscode
+*/.DS_Store
+*.exe
+
+# go sum
+go.sum

@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:14
+    container_name: postgres_container
+    environment:
+      POSTGRES_USER: einstein
+      POSTGRES_PASSWORD: QTfkYNJmia2TYdi3
+      POSTGRES_DB: einstein
+    ports:
+      - "0.0.0.0:5432:5432"
+    volumes:
+      - ./docker-data/postgres_data:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d
+    networks:
+      - webeinstein
+
+  redis:
+    image: redis:6.2.5
+    container_name: redis_container
+    ports:
+      - "0.0.0.0:6379:6379"
+    command: "redis-server  --requirepass jhkdjhkjdhsIUTYURTU_76Dhb2  --appendonly yes"
+    privileged: true
+    volumes:
+      - ./docker-data/redis_data:/data
+    networks:
+      - webeinstein
+
+  einstein:
+    container_name: einstein
+    build:
+      context: .
+    privileged: true
+    restart: always
+    ports:
+      - "8012:8012"
+    volumes:
+      - ./config/:/config
+    networks:
+      - webeinstein
+    depends_on:
+      - postgres
+      - redis
+
+networks:
+  webeinstein:
+    driver: bridge
+

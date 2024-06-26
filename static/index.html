@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>collaborative editing demo</title>
+    <script src="https://cdn.jsdelivr.net/g/ace@1.2.6(min/ace.js+min/mode-java.js+min/theme-monokai.js),jquery@2.2.1,bootstrap@3.3.7" type="text/javascript" charset="utf-8"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/g/bootstrap@3.3.7(css/bootstrap-theme.min.css+css/bootstrap.min.css)" />
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style type="text/css" media="screen">
+        #editor {
+            height: 300px;
+            width: 100%;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <p>Your name:
+            <input id="userName" type="text" value="Me" size="10" />
+            <span id="users"></span>
+        </p>
+        <p id="createAndJoinSection">
+            <input id="createRoomBtn" type="button" value="Create a document" /> or input code
+            <input id="existingRoomId" type="text" value="" size="5" /> and
+            <input type="button" id="joinExistingRoomBtn" value="join" /> <span id="joinUrl"></span>
+        </p>
+        <p>
+            <div id="editor"></div>
+        </p>
+    </div>
+
+    <script>
+        $(function() {
+            var updating = false;
+            var editor = ace.edit("editor");
+            editor.setTheme("ace/theme/monokai");
+            editor.getSession().setMode("ace/mode/java");
+            editor.$blockScrolling = Infinity;
+
+            const userId = "user-id-" + Date.now();
+            $("#userName").val("Me-" + Date.now() % 100000);
+
+            var ws = new WebSocket("ws://" + window.location.hostname + ":8012/api/v1/ws");
+            ws.onopen = function(data) {
+                console.log("onopen");
+
+                if (shouldJoinAutomatically()) {
+                    var roomId = location.search.split("j=")[1];
+                    $("#createAndJoinSection").hide();
+                    subscribe(roomId, ws);
+                }
+            }
+            ws.onmessage = function(data) {
+                updateContent(data.data);
+            }
+            ws.onclose = function(data) {
+                console.log("onclose");
+            }
+
+            function shouldJoinAutomatically() {
+                if (location.search == "") {
+                    return false;
+                }
+
+                var pair = location.search.split("j=");
+                return pair.length == 2 && pair[0] == "?" && pair[1].length == 5;
+            }
+
+            $('#createRoomBtn').click(function() {
+                $.ajax({
+                    type: "POST",
+                    url: "/api/v1/room",
+                    error: function(data) {
+                        console.error(data);
+                    },
+                    success: function(data) {
+                        var roomId = data;
+                        var joinUrl = "http://" + window.location.hostname + ":8012/api/v1/collaborative_editing_demo?j=" + roomId;
+                        console.log("url: " + joinUrl);
+                        $("#existingRoomId").val(roomId);
+                        $("#joinUrl").html("(<a href=\"" + joinUrl + "\" target=\"_blank\">link</a>)");
+
+                        subscribe(roomId, ws);
+                    }
+                });
+            });
+            $("#joinExistingRoomBtn").click(function() {
+                var roomId = $("#existingRoomId").val();
+                subscribe(roomId, ws);
+            });
+
+            function subscribe(roomId, ws) {
+                var subscribeRequest = {
+                    roomId: roomId,
+                    userId: userId,
+                    userName: $("#userName").val()
+                };
+
+                console.log("subscribing to updates..");
+                ws.send(JSON.stringify(subscribeRequest));
+
+                editor.getSession().on("change", function(e) {
+                    if (updating) {
+                        return;
+                    }
+
+                    // TODO limit frequency of this. don't send every single update.
+                    var newContent = editor.getSession().getValue();
+                    sendUpdate(roomId, newContent);
+                });
+            }
+
+            function sendUpdate(roomId, newContent) {
+                var updateRequest = {
+                    roomId: roomId,
+                    userId: userId,
+                    update: newContent,
+                };
+                $.ajax({
+                    type: "PUT",
+                    url: "/api/v1/room",
+                    data: JSON.stringify(updateRequest),
+                    dataType: "json",
+                    error: function(data) {
+                        console.error(data);
+                    }
+                });
+            }
+
+            function updateContent(newContent) {
+                updating = true;
+                editor.getSession().setValue(newContent);
+                updating = false;
+            }
+        });
+    </script>
+</body>
+
+</html>
